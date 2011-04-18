@@ -1,0 +1,12 @@
+{{OaiRecord
+|title=[% rec.title %]
+|publisher=[% rec.publisher %]
+|language=[% rec.language %]
+|description=[% rec.description %]
+|relation=[% rec.relation %]
+|coverage=[% rec.coverage %]
+|subjects=[% rec.subjects %]
+|number=[% rec.number %]
+}}
+
+[% rec.coverage_cat %] [% rec.subjects_cat %] [% rec.relation_cat %]
