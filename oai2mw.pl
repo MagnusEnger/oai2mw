@@ -1,19 +1,37 @@
 #!/usr/bin/perl -w
 
+# This is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This file is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this file; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
+
 use Net::OAI::Harvester;
 use MediaWiki::Bot;
+use YAML::Tiny;
 use Template;
 use Data::Dumper;
 use Getopt::Long;
 use Pod::Usage;
 use strict;
 
-my ($baseurl, $all, $record, $limit, $info, $verbose, $debug) = get_options();
+my ($config, $all, $record, $limit, $info, $verbose, $debug) = get_options();
 
-# Create a harvester
-my $harvester = Net::OAI::Harvester->new( 
-    'baseURL' => $baseurl,
-);
+# Open the config
+my $yaml = YAML::Tiny->new;
+if (-e $config) {
+	$yaml = YAML::Tiny->read($config);
+} else {
+	die "Could not find $config\n";
+}
 
 # Set up Template Toolkit
 my $ttconfig = {
@@ -27,43 +45,101 @@ my $tt2 = Template->new($ttconfig) || die Template->error(), "\n";
 my $bot = MediaWiki::Bot->new({
 	assert      => 'bot',
 }) or die "Could not create bot";
+
+# Choose the wiki
+if ($debug) { print "Wiki: ", $yaml->[0]->{wikihost}, " / ", $yaml->[0]->{wikipath}, "\n"; }
 $bot->set_wiki({
-	host        => 'dt-test-wiki.websites.jonnybe.webdev.hit.no',
-	path        => '',
+	host        => $yaml->[0]->{wikihost},
+	path        => '', # $yaml->[0]->{wikipath},
 }) or die "Could not set wiki";
-# TODO make this configurable
+
+# Log in to the wiki
+if ($debug) { print "Wiki user: ", $yaml->[0]->{wikiuser}, ":", $yaml->[0]->{wikipass}, "\n"; }
+# Make sure we are logged out first
+$bot->logout();
 $bot->login({
-	username => 'Oai2mw',
-	password => '',
+	username => $yaml->[0]->{wikiuser},
+	password => $yaml->[0]->{wikipass},
 }) or die "Login failed ", $bot->{'error'}->{'code'}, " ", $bot->{'error'}->{'details'};
 
-if ($info) {
+# Loop through all the repositories in the config file
+foreach my $source (@{ $yaml->[0]->{sources} }) {
 
-	# If $info is set, we print some info about the repo and then exit
+	# Create a harvester
+	my $harvester = Net::OAI::Harvester->new( 
+	    'baseURL' => $source->{baseurl},
+	);
 
-	# Find out the name for a repository
-	my $identity = $harvester->identify();
-	print "* Name: ",$identity->repositoryName(),"\n";
+	if ($info) {
 
-	# List sets
-	my $sets = $harvester->listSets();
-	print "\n* Sets\n";
-	foreach ( $sets->setSpecs() ) { 
-		print "set spec: $_ ; set name: ", $sets->setName( $_ ), "\n";
+		# If $info is set, we print some info about the repo and then exit
+
+		# Find out the name for a repository
+		my $identity = $harvester->identify();
+		print "* Name: ",$identity->repositoryName(),"\n";
+
+		# List sets
+		my $sets = $harvester->listSets();
+		print "\n* Sets\n";
+		foreach ( $sets->setSpecs() ) { 
+			print "set spec: $_ ; set name: ", $sets->setName( $_ ), "\n";
+		}
+
+		# List metadataformats
+		print "\n* Metadata formats: ";
+		my $list = $harvester->listMetadataFormats();
+		print join( ',', $list->prefixes() ),"\n\n";
+
+	  exit;
+
 	}
 
-	# List metadataformats
-	print "\n* Metadata formats: ";
-	my $list = $harvester->listMetadataFormats();
-	print join( ',', $list->prefixes() ),"\n\n";
+	if ($all) {
 
-  exit;
+		# List all the records in the repository
+		my $records = $harvester->listAllRecords( 
+			  'metadataPrefix'    => 'oai_dc' 
+		);
+		my $count = 0;
+		while ( my $record = $records->next() ) {
+			my $header = $record->header();
+			my $metadata = $record->metadata();
+			if ($metadata->title()) {
+				print $header->identifier(), ": ", $metadata->title(), "\n";
+				$count++;
+			}
+	    # Honour the --limit option
+			if ($count == $limit) {
+				last;
+			}
+		}
+		print "$count records\n";
 
-}
+		exit;
 
-if ($all) {
+	}
 
-	# List all the records in the repository
+	if ($record) {
+
+		# Get info about 1 record
+		my $rec = $harvester->getRecord( 
+		'identifier'     => $record,
+		'metadataPrefix' => 'oai_dc',
+		);
+
+		# Dump the Net::OAI::Record::Header object
+		# my $header = $rec->header();
+		# print Dumper $header;
+
+		# Dump the metadata object 
+		my $metadata = $rec->metadata();
+		print Dumper $metadata;
+
+		exit;
+
+	}
+
+	# Walk through all the records in the repository, respecting --limit
 	my $records = $harvester->listAllRecords( 
 		  'metadataPrefix'    => 'oai_dc' 
 	);
@@ -72,67 +148,35 @@ if ($all) {
 		my $header = $record->header();
 		my $metadata = $record->metadata();
 		if ($metadata->title()) {
-			print $header->identifier(), ": ", $metadata->title(), "\n";
+			my %record = metadata2structure($metadata);
+			# Output
+			my $text = '';
+			$tt2->process('mwtemplate.tt', { 'rec' => \%record }, \$text) || die $tt2->error();
+			# Check to see if the page we are about to edit already exists
+			my $wikitext = $bot->get_text($metadata->title());
+			if (defined $wikitext) {
+				my ($head, $tail) = split '<!-- Do NOT edit above this line! oai2mw -->', $wikitext;
+				if ($tail) { 
+					$text = $text . $tail;
+				}
+			}
+			$bot->edit({
+				page    => $metadata->title(),
+				text    => $text,
+				summary => $yaml->[0]->{wikimsg},
+				# section => 'new',
+			});
+			if ($verbose) { print $metadata->identifier(), ': ', $metadata->title(), "\n" }
 			$count++;
 		}
-    # Honour the --limit option
-		if ($count == $limit) {
+		# Honour the --limit option
+		if ($limit && $count == $limit) {
 			last;
 		}
 	}
 	print "$count records\n";
 
-	exit;
-
 }
-
-if ($record) {
-
-	# Get info about 1 record
-	my $rec = $harvester->getRecord( 
-	'identifier'     => $record,
-	'metadataPrefix' => 'oai_dc',
-	);
-
-	# Dump the Net::OAI::Record::Header object
-	# my $header = $rec->header();
-	# print Dumper $header;
-
-	# Dump the metadata object 
-	my $metadata = $rec->metadata();
-	print Dumper $metadata;
-
-	exit;
-
-}
-
-# Walk through all the records in the repository, respecting --limit
-my $records = $harvester->listAllRecords( 
-	  'metadataPrefix'    => 'oai_dc' 
-);
-my $count = 0;
-while ( my $record = $records->next() ) {
-	my $header = $record->header();
-	my $metadata = $record->metadata();
-	if ($metadata->title()) {
-		my %record = metadata2structure($metadata);
-		# Output
-		my $text = '';
-		$tt2->process('mwtemplate.tt', { 'rec' => \%record }, \$text) || die $tt2->error();
-		$bot->edit({
-			page    => $metadata->title(),
-			text    => $text,
-			summary => 'Lagt inn av oai2mw',
-			# section => 'new',
-		});
-		$count++;
-	}
-  # Honour the --limit option
-	if ($count == $limit) {
-		last;
-	}
-}
-print "$count records\n";
 
 ### SUBROUTINES
 
@@ -161,6 +205,7 @@ sub metadata2structure {
 		# Skip anything that starts with a number
 		if ($cover =~ m/^([^0-9].*)$/i) {
 			next if (substr($1, 0, 3) eq 'UTM');
+			next if ($1 eq '' || $1 eq ' ');
 			$data{'coverage'} .= $1 . ", ";
 			$data{'coverage_cat'} .= '[[Kategori:' . ucfirst($1) . ']] ';
 		}
@@ -169,6 +214,7 @@ sub metadata2structure {
 	# Subjects
 	my @subjects = $meta->subject();
 	foreach my $subject (@subjects) {
+		next if ($subject eq '' || $subject eq ' ');
 		$data{'subjects'} .= $subject . ", ";
 		$data{'subjects_cat'} .= '[[Kategori:' . ucfirst($subject) . ']] ';
 	}
@@ -179,16 +225,16 @@ sub metadata2structure {
 
 # Get commandline options
 sub get_options {
-  my $baseurl     = '';
-	my $all         = '';
-	my $record      = '';
+  my $config      = '';
+  my $all         = '';
+  my $record      = '';
   my $limit       = 0;
   my $info        = '';
   my $verbose     = '';
   my $debug       = '';
   my $help        = '';
 
-  GetOptions("b|baseurl=s" => \$baseurl,
+  GetOptions("c|config=s"  => \$config,
              "a|all"       => \$all, 
              "r|record=s"  => \$record, 
              "l|limit=i"   => \$limit,
@@ -199,9 +245,9 @@ sub get_options {
              );
   
   pod2usage(-exitval => 0) if $help;
-  pod2usage( -msg => "\nMissing Argument: -b, --baseurl required\n", -exitval => 1) if !$baseurl;
+  pod2usage( -msg => "\nMissing Argument: -c, --config required\n", -exitval => 1) if !$config;
 
-  return ($baseurl, $all, $record, $limit, $info, $verbose, $debug);
+  return ($config, $all, $record, $limit, $info, $verbose, $debug);
 }       
 
 __END__
@@ -212,15 +258,15 @@ oai2mw.pl - Copy metadata from an OAI-PMH repository to a MediaWiki wiki
         
 =head1 SYNOPSIS
             
-oai2mw.pl --info
+oai2mw.pl -c myconfig.yaml
 
 =head1 OPTIONS
               
 =over 8
 
-=item B<-b, --baseurl>
+=item B<-c, --config>
 
-Base URL of the OAI repo we want to talk to, e.g. http://example.org/dspace-oai/request 
+Path to a config file in YAML format. 
 
 =item B<-a, --all>
 
