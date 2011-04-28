@@ -14,6 +14,12 @@
 # along with this file; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
+# TODO
+# Check for duplicate titles
+# Make it possible to harvest just a given list of sets from a repository
+# Make it possible to specify the metadataformat to be harvested per repository
+# Fix the "path" part of the wiki setup
+
 use Net::OAI::Harvester;
 use MediaWiki::Bot;
 use YAML::Tiny;
@@ -50,7 +56,7 @@ my $bot = MediaWiki::Bot->new({
 if ($debug) { print "Wiki: ", $yaml->[0]->{wikihost}, " / ", $yaml->[0]->{wikipath}, "\n"; }
 $bot->set_wiki({
 	host        => $yaml->[0]->{wikihost},
-	path        => '', # $yaml->[0]->{wikipath},
+	path        => '', # FIXME $yaml->[0]->{wikipath},
 }) or die "Could not set wiki";
 
 # Log in to the wiki
