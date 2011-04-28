@@ -1,0 +1,11 @@
+---
+
+wikihost: example.org
+wikipath: wiki
+wikiuser: MyBotUser
+wikipass: MyBotUserPassword
+wikimsg: Edited by Oai2mw
+
+sources: 
+- id: test1
+  baseurl: http://example.net/dspace-oai/request
