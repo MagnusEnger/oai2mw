@@ -150,11 +150,20 @@ foreach my $source (@{ $yaml->[0]->{sources} }) {
 		  'metadataPrefix'    => 'oai_dc' 
 	);
 	my $count = 0;
+	my %titles;
 	while ( my $record = $records->next() ) {
 		my $header = $record->header();
 		my $metadata = $record->metadata();
+		# We only care about records that have a title
 		if ($metadata->title()) {
 			my %record = metadata2structure($metadata);
+			# Check to see if we have already seen a record with this title
+			$titles{$record{'title'}}++;
+			if ($titles{$record{'title'}} > 1) {
+			    # If this was seen before, add the number to the title
+			    $record{'title'} = $record{'title'} . ' (' . $record{'number'} . ')';
+			    if ($verbose) { print "Oops, seen before! ", $record{'title'}, "\n" }
+			}
 			# Output
 			my $text = '';
 			$tt2->process('mwtemplate.tt', { 'rec' => \%record }, \$text) || die $tt2->error();
@@ -167,7 +176,7 @@ foreach my $source (@{ $yaml->[0]->{sources} }) {
 				}
 			}
 			$bot->edit({
-				page    => $metadata->title(),
+				page    => $record{'title'},
 				text    => $text,
 				summary => $yaml->[0]->{wikimsg},
 				# section => 'new',
