@@ -1,0 +1,15 @@
+{{Artikkel
+|Tittel=[% rec.Tittel %]
+|Undertittel=
+|Forfattere=[% rec.Forfattere %]
+|Tidsskrift=[% rec.Tidsskrift %]
+|Utgivelsesår=[% rec.Utgivelsesaar %]
+|Årgang=[% rec.Aargang %]
+|Hefte=[% rec.Hefte %]
+|Sider=[% rec.Sider %]
+|Emner=
+|URL=
+|NORART nr=
+}}
+[% Tekst %]
+[[Kategori:Kvalsvik]] [[Kategori:Importert]]
