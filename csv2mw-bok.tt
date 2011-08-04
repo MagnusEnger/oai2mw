@@ -1,0 +1,16 @@
+{{Bok
+|Tittel=[% rec.Tittel %]
+|Undertittel=[% rec.Undertittel %]
+|Forfatter=[% rec.Forfatter %]
+|Redaktør=[% rec.Redaktoer %]
+|Utgivelsesår=[% rec.Utgivelsesaar %]
+|Utgiver=[% rec.Utgiver %]
+|BIBSYS ID=
+|ISBN=
+|Open Library ID=
+|URN=
+|Emner=[% rec.Emner %]
+|URL=
+}}
+[% rec.Tekst %]
+[[Kategori:Kvalsvik]] [[Kategori:Importert]]

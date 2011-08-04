@@ -1,0 +1,13 @@
+{{Avisartikkel
+|Tittel=[% rec.Tittel %]
+|Avis=[% rec.Avis %]
+|Forfattere=[% rec.Forfattere %]
+|Dato=[% rec.Dato %]
+|Utgivelsesår=[% rec.Utgivelsesaar %]
+|Hefte=[% rec.Hefte %]
+|Sider=
+|Emner=
+|URL=
+}}
+[% Tekst %]
+[[Kategori:Kvalsvik]] [[Kategori:Importert]]
