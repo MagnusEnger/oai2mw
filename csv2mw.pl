@@ -52,7 +52,13 @@ my $bot = MediaWiki::Bot->new({
 }) or die "Could not create bot";
 
 # Choose the wiki
-if ($debug) { print "Wiki: ", $yaml->[0]->{wikihost}, " / ", $yaml->[0]->{wikipath}, "\n"; }
+if ($debug) { 
+    print "Wiki: ", $yaml->[0]->{wikihost};
+    if ($yaml->[0]->{wikipath}) {
+      print " / ", $yaml->[0]->{wikipath}; 
+    }
+    print "\n";
+}
 $bot->set_wiki({
 	host        => $yaml->[0]->{wikihost},
 	path        => '', # FIXME $yaml->[0]->{wikipath},
@@ -62,10 +68,11 @@ $bot->set_wiki({
 if ($debug) { print "Wiki user: ", $yaml->[0]->{wikiuser}, ":", $yaml->[0]->{wikipass}, "\n"; }
 # Make sure we are logged out first
 $bot->logout();
-$bot->login({
+my $login = $bot->login({
 	username => $yaml->[0]->{wikiuser},
 	password => $yaml->[0]->{wikipass},
 }) or die "Login failed ", $bot->{'error'}->{'code'}, " ", $bot->{'error'}->{'details'};
+if ($debug) { print "\t Login: $login\n"; }
 
 # Read the input file
 my $csv = Text::CSV->new ( { 
@@ -80,6 +87,9 @@ close $fh;
 
 my $count = 0;
 foreach my $record ( @{$records} ) {
+
+	if ($debug) { print "----------------- Record $count -----------------"; }
+
     # Output
 	my $text = '';
 	$tt2->process($template, { 'rec' => $record }, \$text, binmode => ':utf8') || die $tt2->error();
@@ -87,17 +97,19 @@ foreach my $record ( @{$records} ) {
 	# Check to see if the page we are about to edit already exists
 	my $wikitext = $bot->get_text($record->{'Sidetittel'});
    	if (defined $wikitext) {
+   	    if ($debug) { print "\tExists: ", $record->{'Sidetittel'}, "\n"; }
 	    my ($head, $tail) = split '<!-- Do NOT edit above this line! csv2mw -->', $wikitext;
 		if ($tail) { 
 			$text = $text . $tail;
 		}
 	}
+	if ($debug) { print "\n\n$text\n\n" }
 	$bot->edit({
-		page    => $record->{'Sidetittel'},
-		text    => $text,
-		summary => $yaml->[0]->{wikimsg},
-		# section => 'new',
-	});
+		page      => $record->{'Sidetittel'},
+		text      => $text,
+		summary   => $yaml->[0]->{wikimsg},
+		# assertion => 'bot', 
+	}) or die "Edit failed: ", $bot->{'error'}->{'code'}, " ", $bot->{'error'}->{'details'};
 	if ($verbose) { print $record->{'Tittel'}, "\n" }
 	$count++;
 	# Honour the --limit option
@@ -105,7 +117,7 @@ foreach my $record ( @{$records} ) {
 		last;
 	}
 }
-print "$count records\n";
+print "$count records done\n";
 
 ### SUBROUTINES
 
