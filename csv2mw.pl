@@ -24,7 +24,7 @@ use Pod::Usage;
 use encoding 'utf8';
 use strict;
 
-my ($config, $inputfile, $template, $limit, $verbose, $debug) = get_options();
+my ($config, $inputfile, $template, $message, $limit, $verbose, $debug) = get_options();
 
 # Check that the input file exists
 if (! -e $inputfile) { die "Could't find $inputfile!\n"; }
@@ -88,7 +88,8 @@ close $fh;
 my $count = 0;
 foreach my $record ( @{$records} ) {
 
-	if ($debug) { print "----------------- Record $count -----------------"; }
+	if ($debug) { print "----------------- Record $count -----------------\n"; }
+	if ($debug) { print $record->{'Sidetittel'}, "\n"; }
 
     # Output
 	my $text = '';
@@ -103,14 +104,13 @@ foreach my $record ( @{$records} ) {
 			$text = $text . $tail;
 		}
 	}
-	if ($debug) { print "\n\n$text\n\n" }
+	if ($debug) { print "\n$text\n" }
 	$bot->edit({
 		page      => $record->{'Sidetittel'},
 		text      => $text,
-		summary   => $yaml->[0]->{wikimsg},
-		# assertion => 'bot', 
+		summary   => $message ? $message : $yaml->[0]->{wikimsg},
+		assertion => 'bot', 
 	}) or die "Edit failed: ", $bot->{'error'}->{'code'}, " ", $bot->{'error'}->{'details'};
-	if ($verbose) { print $record->{'Tittel'}, "\n" }
 	$count++;
 	# Honour the --limit option
 	if ($limit && $count == $limit) {
@@ -134,6 +134,7 @@ sub get_options {
   GetOptions("c|config=s"   => \$config,
              "i|input=s"    => \$inputfile, 
              "t|template=s" => \$template, 
+             "m|message=s"  => \$message, 
              "l|limit=i"    => \$limit,
              "v|verbose"    => \$verbose,
              "d|debug"      => \$debug,
@@ -145,7 +146,7 @@ sub get_options {
   pod2usage( -msg => "\nMissing Argument: -i, --input required\n", -exitval => 1) if !$inputfile;
   pod2usage( -msg => "\nMissing Argument: -t, --template required\n", -exitval => 1) if !$template;
 
-  return ($config, $inputfile, $template, $limit, $verbose, $debug);
+  return ($config, $inputfile, $template, $message, $limit, $verbose, $debug);
 }       
 
 __END__
@@ -173,6 +174,10 @@ Path to CSV file.
 =item B<-t, --template>
 
 Path to Template Toolkit template. 
+
+=item B<-m, --message>
+
+Message to leave in the wiki when editing a page. Default is set with "wikimsg" in the config file.  
 
 =item B<-l, --limit>
 
