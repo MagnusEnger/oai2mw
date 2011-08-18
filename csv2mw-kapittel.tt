@@ -1,0 +1,11 @@
+{{Kapittel
+|Tittel=[% rec.Tittel %]
+|Vertsdokument=[% rec.Vertsdokument %]
+|Utgivelsesår=[% rec.Utgivelsesaar %]
+|Forfatter=[% rec.Forfatter %]
+|Sider=[% rec.Sider %]
+|Emner=
+|URL=
+}}
+[% rec.Tekst %]
+[[Kategori:Kvalsvik]] [[Kategori:Importert]]

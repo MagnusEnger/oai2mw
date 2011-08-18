@@ -1,0 +1,7 @@
+{{Kommune
+|Fylke=[% rec.Fylke %]
+|Kommunenummer=[% rec.Kommunenummer %]
+|Kommune=[% rec.Kommune %]
+|Koordinater=[% rec.lat %],[% rec.lon %]
+|Kommunesentrum=[% rec.Kommunesentrum %]
+}}
