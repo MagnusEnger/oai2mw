@@ -21,12 +21,14 @@
 # Fix the "path" part of the wiki setup
 
 use Net::OAI::Harvester;
+use LWP::UserAgent;
 use MediaWiki::Bot;
 use YAML::Tiny;
 use Template;
 use Data::Dumper;
 use Getopt::Long;
 use Pod::Usage;
+use Geo::Coordinates::UTM;
 use strict;
 
 my ($config, $all, $record, $limit, $info, $verbose, $debug) = get_options();
@@ -56,7 +58,7 @@ my $bot = MediaWiki::Bot->new({
 if ($debug) { print "Wiki: ", $yaml->[0]->{wikihost}, " / ", $yaml->[0]->{wikipath}, "\n"; }
 $bot->set_wiki({
 	host        => $yaml->[0]->{wikihost},
-	path        => '', # FIXME $yaml->[0]->{wikipath},
+	path        => $yaml->[0]->{wikipath},
 }) or die "Could not set wiki";
 
 # Log in to the wiki
@@ -67,13 +69,16 @@ $bot->login({
 	username => $yaml->[0]->{wikiuser},
 	password => $yaml->[0]->{wikipass},
 }) or die "Login failed ", $bot->{'error'}->{'code'}, " ", $bot->{'error'}->{'details'};
+if ($debug) { print "Logged in to the wiki\n"; }
 
 # Loop through all the repositories in the config file
 foreach my $source (@{ $yaml->[0]->{sources} }) {
 
 	# Create a harvester
+	my $ua = LWP::UserAgent->new( 'agent' => "Mozilla/5.0 (X11; U; Gentoo Linux x86_64; pl-PL) Gecko Firefox" );
 	my $harvester = Net::OAI::Harvester->new( 
-	    'baseURL' => $source->{baseurl},
+	    'baseURL'   => $source->{baseurl},
+	    'userAgent' => $ua
 	);
 
 	if ($info) {
@@ -103,22 +108,46 @@ foreach my $source (@{ $yaml->[0]->{sources} }) {
 	if ($all) {
 
 		# List all the records in the repository
-		my $records = $harvester->listAllRecords( 
-			  'metadataPrefix'    => 'oai_dc' 
-		);
+		$Net::OAI::Harvester::DEBUG = 0;
 		my $count = 0;
-		while ( my $record = $records->next() ) {
-			my $header = $record->header();
-			my $metadata = $record->metadata();
-			if ($metadata->title()) {
-				print $header->identifier(), ": ", $metadata->title(), "\n";
-				$count++;
-			}
-	    # Honour the --limit option
-			if ($count == $limit) {
-				last;
-			}
-		}
+		
+		my $records = $harvester->listRecords( metadataPrefix => 'oai_dc' );
+    my $finished = 0;
+    while ( ! $finished ) {
+      while ( my $record = $records->next() ) {
+        my $header = $record->header();
+        my $metadata = $record->metadata();
+			  if ($metadata->title()) {
+				  print $header->identifier(), ": ", $metadata->title(), "\n";
+				  $count++;
+			  }
+      }
+      my $rToken = $records->resumptionToken();
+      if ( $rToken ) {
+          $records = $harvester->listRecords(
+              resumptionToken => $rToken->token()
+          );
+      } else {
+          $finished = 1;
+      }
+    }
+		
+#    my $records = $harvester->listAllRecords();
+#		# die Dumper $records;
+#		my $count = 0;
+#		
+#		while ( my $record = $records->next() ) {
+#			my $header = $record->header();
+#			my $metadata = $record->metadata();
+#			if ($metadata->title()) {
+#				print $header->identifier(), ": ", $metadata->title(), "\n";
+#				$count++;
+#			}
+#	    # Honour the --limit option
+#			if ($count == $limit) {
+#				last;
+#			}
+#		}
 		print "$count records\n";
 
 		exit;
@@ -167,6 +196,7 @@ foreach my $source (@{ $yaml->[0]->{sources} }) {
 			# Output
 			my $text = '';
 			$tt2->process('mwtemplate.tt', { 'rec' => \%record }, \$text) || die $tt2->error();
+			if ($debug) { print "$text\n" }
 			# Check to see if the page we are about to edit already exists
 			my $wikitext = $bot->get_text($metadata->title());
 			if (defined $wikitext) {
@@ -175,8 +205,12 @@ foreach my $source (@{ $yaml->[0]->{sources} }) {
 					$text = $text . $tail;
 				}
 			}
+			my $pagetitle = $record{'title'};
+			if ($record{'year'}) {
+			  $pagetitle = $pagetitle . " (" . $record{'year'} . ")";
+			}
 			$bot->edit({
-				page    => $record{'title'},
+				page    => $pagetitle,
 				text    => $text,
 				summary => $yaml->[0]->{wikimsg},
 				# section => 'new',
@@ -233,9 +267,58 @@ sub metadata2structure {
 		$data{'subjects'} .= $subject . ", ";
 		$data{'subjects_cat'} .= '[[Kategori:' . ucfirst($subject) . ']] ';
 	}
-
+	
+	# Year
+  my @dates = $meta->date();
+	foreach my $date (@dates) {
+		next if ( length $date != 4 );
+		$data{'year'} = $date;
+	}
+	
+	# Creator
+  my @creators = $meta->creator();
+  my $creator_count = 0;
+	foreach my $creator (@creators) {
+	  if ($creator_count > 0) {
+	    $data{'creator'} .= "; ";
+	  }
+		$data{'creator'} .= $creator;
+		$creator_count++;
+	}
+	
+	my @positions = $meta->coverage();
+	my $utm1 = 0;
+	my $utm2 = 0;
+	my ($lat, $lon);
+	foreach my $pos (@positions) {
+	  print "$pos\n";
+	  next if ( length $pos < 6 );
+	  next if ( !isint($pos) );
+	  if ( $utm1 == 0 ) {
+	    $utm1 = $pos;
+	  } else {
+	    $utm2 = $pos;
+	  }
+	}
+	if ( $utm1 && $utm2 ) {
+	  if ( $utm1 > $utm2 ) {
+	    ( $lat, $lon ) = utm_to_latlon(23, '32V', $utm2, $utm1);
+	  } else {
+	    ( $lat, $lon ) = utm_to_latlon(23, '32V', $utm1, $utm2);
+	  }
+	  if ( $lat && $lon ) {
+	    $data{'latlon'} .= $lat . ", " . $lon;
+	  }
+	}
+	
 	return %data;
 
+}
+
+# http://coding.debuntu.org/perl-checking-if-value-integer
+sub isint{
+  my $val = shift;
+  return ($val =~ m/^\d+$/);
 }
 
 # Get commandline options
