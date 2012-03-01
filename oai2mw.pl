@@ -29,7 +29,7 @@ use Getopt::Long;
 use Pod::Usage;
 use strict;
 
-my ($config, $all, $record, $limit, $info, $verbose, $debug) = get_options();
+my ($config, $all, $record, $yearintitle, $limit, $info, $verbose, $debug) = get_options();
 
 # Open the config
 my $yaml = YAML::Tiny->new;
@@ -166,6 +166,7 @@ foreach my $source (@{ $yaml->[0]->{sources} }) {
 			}
 			# Output
 			my $text = '';
+			print Dumper %record if $debug;
 			$tt2->process('mwtemplate.tt', { 'rec' => \%record }, \$text) || die $tt2->error();
 			# Check to see if the page we are about to edit already exists
 			my $wikitext = $bot->get_text($metadata->title());
@@ -175,8 +176,12 @@ foreach my $source (@{ $yaml->[0]->{sources} }) {
 					$text = $text . $tail;
 				}
 			}
+			my $title = $record{'title'};
+			if ( $yearintitle && $record{'year'} && $record{'year'} ne '' ) {
+			  $title = "$title ($record{'year'})";
+			}
 			$bot->edit({
-				page    => $record{'title'},
+				page    => $title,
 				text    => $text,
 				summary => $yaml->[0]->{wikimsg},
 				# section => 'new',
@@ -209,6 +214,14 @@ sub metadata2structure {
 	# TODO Make the word used for "Kategori" configurable
 	$data{'relation_cat'} = '[[Kategori:' . ucfirst($meta->relation()) . ']] ';
 
+  # Date (year)
+  my @dates = $meta->date();
+  foreach my $date (@dates) {
+    if (length($date) == 4) {
+      $data{'year'} = $date;
+    }
+  }
+
 	# Identifier
 	my $identifier    = $meta->identifier();
 	$identifier =~ m/.*\/([0-9]{1,9})$/;
@@ -220,7 +233,7 @@ sub metadata2structure {
 		# Skip anything that starts with a number
 		if ($cover =~ m/^([^0-9].*)$/i) {
 			next if (substr($1, 0, 3) eq 'UTM');
-			next if ($1 eq '' || $1 eq ' ');
+			next if ($1 eq '' || $1 eq ' ' || $1 eq 'Telemark');
 			$data{'coverage'} .= $1 . ", ";
 			$data{'coverage_cat'} .= '[[Kategori:' . ucfirst($1) . ']] ';
 		}
@@ -243,26 +256,28 @@ sub get_options {
   my $config      = '';
   my $all         = '';
   my $record      = '';
+  my $yearintitle = '';
   my $limit       = 0;
   my $info        = '';
   my $verbose     = '';
   my $debug       = '';
   my $help        = '';
 
-  GetOptions("c|config=s"  => \$config,
-             "a|all"       => \$all, 
-             "r|record=s"  => \$record, 
-             "l|limit=i"   => \$limit,
-             "i|info"      => \$info,
-             "v|verbose"   => \$verbose,
-             "d|debug"     => \$debug,
-             "h|help"      => \$help,
+  GetOptions("c|config=s"    => \$config,
+             "a|all"         => \$all, 
+             "r|record=s"    => \$record, 
+             "y|yearintitle" => \$yearintitle, 
+             "l|limit=i"     => \$limit,
+             "i|info"        => \$info,
+             "v|verbose"     => \$verbose,
+             "d|debug"       => \$debug,
+             "h|help"        => \$help,
              );
   
   pod2usage(-exitval => 0) if $help;
   pod2usage( -msg => "\nMissing Argument: -c, --config required\n", -exitval => 1) if !$config;
 
-  return ($config, $all, $record, $limit, $info, $verbose, $debug);
+  return ($config, $all, $record, $yearintitle, $limit, $info, $verbose, $debug);
 }       
 
 __END__
@@ -290,6 +305,10 @@ List the identifier and title of all records with a title. Can be combined with 
 =item B<-r, --record>
 
 Dump all info about one record identified by the given ID. 
+
+=item B<-y, --yearintitle>
+
+Include the year in the title of pages that are created in the wiki.
 
 =item B<-l, --limit>
 

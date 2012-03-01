@@ -6,6 +6,7 @@
 |relation=[% rec.relation %]
 |coverage=[% rec.coverage %]
 |subjects=[% rec.subjects %]
+|aar=[% rec.year %]
 |number=[% rec.number %]
 }}
 
