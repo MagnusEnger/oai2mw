@@ -8,6 +8,9 @@
 |subjects=[% rec.subjects %]
 |aar=[% rec.year %]
 |number=[% rec.number %]
+|aar=[% rec.year %]
+|forfatter=[% rec.creator %]
+|latlon=[% rec.latlon %]
 }}
 
 [% rec.coverage_cat %] [% rec.subjects_cat %] [% rec.relation_cat %]
